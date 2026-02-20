@@ -49,38 +49,38 @@ const configSchema = Joi.object({
       'number.min': 'PORT must be between 1 and 65535',
       'any.required': 'PORT is required'
     }),
-  
+
   HOST: Joi.string().default('0.0.0.0'),
-  
+
   NODE_ENV: Joi.string().valid('development', 'staging', 'production', 'test').default('development')
     .messages({
       'any.only': 'NODE_ENV must be one of: development, staging, production, test'
     }),
-  
+
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
-  
+
   // Database Configuration
   DATABASE_URL: Joi.string().uri({ scheme: ['postgres', 'postgresql'] }).required()
     .messages({
       'string.uri': 'DATABASE_URL must be a valid PostgreSQL connection string',
       'any.required': 'DATABASE_URL is required'
     }),
-  
+
   // Redis Configuration
   REDIS_HOST: Joi.string().hostname().required()
     .messages({
       'string.hostname': 'REDIS_HOST must be a valid hostname',
       'any.required': 'REDIS_HOST is required'
     }),
-  
+
   REDIS_PORT: Joi.number().integer().min(1).max(65535).default(6379)
     .messages({
       'number.base': 'REDIS_PORT must be a number',
       'number.min': 'REDIS_PORT must be between 1 and 65535'
     }),
-  
+
   REDIS_PASSWORD: Joi.string().allow('').optional(),
-  
+
   // Token Configuration (for future tokenized cash withdrawal system)
   TOKEN_EXPIRY_SECONDS: Joi.number().integer().min(60).max(86400).required()
     .messages({
@@ -89,15 +89,21 @@ const configSchema = Joi.object({
       'number.max': 'TOKEN_EXPIRY_SECONDS must not exceed 86400 seconds (24 hours)',
       'any.required': 'TOKEN_EXPIRY_SECONDS is required'
     }),
-  
+
+  TOKEN_SALT: Joi.string().min(16).required()
+    .messages({
+      'string.min': 'TOKEN_SALT must be at least 16 characters for security',
+      'any.required': 'TOKEN_SALT is required for token hashing'
+    }),
+
   // CORS Configuration
   CORS_ORIGIN: Joi.string().default('*'),
-  
+
   // Rate Limiting Configuration
   RATE_LIMIT_WINDOW_MS: Joi.number().integer().min(1000).default(60000), // 1 minute default
   RATE_LIMIT_MAX_REQUESTS: Joi.number().integer().min(1).default(100), // 100 requests per window
   RATE_LIMIT_SKIP_SUCCESSFUL_REQUESTS: Joi.boolean().default(false),
-  
+
   // Security Configuration
   JWT_SECRET: Joi.string().min(32).optional()
     .messages({
@@ -121,12 +127,12 @@ if (error) {
     const path = detail.path.join('.');
     return `  - ${path}: ${detail.message}`;
   }).join('\n');
-  
+
   console.error('❌ Configuration validation failed:\n');
   console.error(errorMessages);
   console.error('\nPlease check your .env file and ensure all required variables are set correctly.');
   console.error('Refer to .env.example for required variables.\n');
-  
+
   // Exit with error code - fail fast
   process.exit(1);
 }
@@ -152,6 +158,7 @@ module.exports = {
   },
   token: {
     expirySeconds: config.TOKEN_EXPIRY_SECONDS,
+    salt: config.TOKEN_SALT,
   },
   cors: {
     origin: config.CORS_ORIGIN === '*' ? '*' : config.CORS_ORIGIN.split(','),

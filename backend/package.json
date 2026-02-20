@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "migrate": "node db/migrate.js",
     "migrate:rollback": "node db/migrate.js rollback",
     "knex:migrate:latest": "knex migrate:latest --knexfile db/knexfile.js",
@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "eslint": "^10.0.0",
+    "jest": "^29.7.0",
     "nodemon": "^3.1.11",
     "prettier": "^3.8.1"
   }
