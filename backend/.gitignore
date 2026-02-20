@@ -1,0 +1,27 @@
+## Node backend hygiene (CRITICAL)
+# `node_modules/` must never be committed in professional systems:
+# - Not portable across OS/CPU/Node versions; causes non-reproducible builds.
+# - Bloats repos and slows audits/reviews (financial systems require tight change control).
+# - Dependency state must be reproduced from `package.json` + lockfile, not from vendored artifacts.
+node_modules/
+
+## Environment & secrets
+.env
+.env.*
+
+## Build output
+dist/
+build/
+
+## Coverage
+coverage/
+
+## Logs
+logs/
+*.log
+npm-debug.log*
+
+## Temp / cache
+.tmp/
+tmp/
+.cache/

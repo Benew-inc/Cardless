@@ -1,0 +1,22 @@
+## Docker build context hygiene
+# Prevents accidentally sending huge/untrusted directories into the image build context.
+# This avoids environment drift (host artifacts influencing container builds) and keeps builds fast/reproducible.
+
+node_modules/
+npm-debug.log*
+*.log
+logs/
+
+.env
+.env.*
+
+coverage/
+dist/
+build/
+
+.cache/
+.tmp/
+tmp/
+
+.git/
+.github/
