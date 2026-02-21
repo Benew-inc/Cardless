@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const Joi = require('joi');
 const config = require('../config');
-const logger = require('../utils/logger'); // Assuming typical logger location
+const { logger } = require('../utils/logger');
 
 /**
  * Token Service
@@ -81,24 +81,14 @@ class TokenService {
                 const coreToken = this.generateRandomToken(8);
 
                 // Non-secret random prefix (e.g. 4 chars) to enable O(1) row lookup later
-                // It's part of the plaintext token the user sees, but NOT the secret part.
                 const tokenIdPrefix = this.generateRandomToken(4);
                 const plaintextToken = `${tokenIdPrefix}-${coreToken}`;
 
                 const salt = crypto.randomBytes(16); // 16 bytes for per-token salt
-
-                // We hash ONLY the core secret, or the whole thing. Hashing the whole thing is fine.
                 const tokenHash = this.hashToken(plaintextToken, salt);
 
                 const expiresAt = new Date(Date.now() + config.token.expirySeconds * 1000);
 
-                // Store in DB. Use the non-secret prefix as a lookup index, or just store it.
-                // Wait, we don't have a column for the prefix. We can use the UUID 'id' of the token 
-                // to guide the lookup! But UUIDs are long.
-                // Let's modify the `id` generation to be our own sequence/random ID?
-                // Actually, let's just make the "Prefix" the first 8 chars of a UUID or similar, 
-                // but wait, we can't search by `token_hash` natively without the salt.
-                // So we MUST search by some DB standard. Let's just create a fast unique non-secret token ID.
                 const [tokenRecord] = await this.db('tokens').insert({
                     account_id: accountId,
                     amount,
@@ -156,8 +146,6 @@ class TokenService {
 
         return await this.db.transaction(async (trx) => {
             // 1. Fetch only ACTIVE tokens matching the non-secret prefix.
-            // In a healthy system, there is exactly one active token for a randomly generated 4-char prefix.
-            // In extreme cases of collision, there might be a few. This reduces O(N) lookup to O(1).
             const candidateTokens = await trx('tokens')
                 .where({ prefix: prefix, status: 'ACTIVE' })
                 .andWhere('expires_at', '>', new Date());
@@ -165,7 +153,6 @@ class TokenService {
             let matchedTokenId = null;
 
             // Constant time verification loop to prevent timing attacks.
-            // Usually candidateTokens.length is 1. We process all matching prefix tokens.
             for (const t of candidateTokens) {
                 const candidateHash = this.hashToken(fullToken, t.salt);
 
@@ -182,14 +169,12 @@ class TokenService {
             }
 
             // 2. We found the token. NOW we explicitly lock that specific row FOR UPDATE
-            // to serialize concurrency and prevent race conditions.
             const token = await trx('tokens')
                 .where({ id: matchedTokenId })
                 .forUpdate() // CRITICAL: Row-level lock
                 .first();
 
             if (!token || token.status !== 'ACTIVE' || new Date() >= new Date(token.expires_at)) {
-                // Race condition caught: someone else processed it or it expired naturally between lookup and lock.
                 return { result: 'EXPIRED_OR_USED' };
             }
 
@@ -225,7 +210,70 @@ class TokenService {
                 tokenId: token.id,
                 transactionId: transaction.id
             };
-        }, { isolationLevel: 'repeatable read' }); // Ensure REPEATABLE READ isolation to prevent phantom reads
+        }, { isolationLevel: 'repeatable read' });
+    }
+
+    /**
+     * Gathers historical signals for risk evaluation.
+     * @param {string} accountId 
+     * @param {string} agentId 
+     * @param {number} currentAmount 
+     * @returns {Promise<Object>} Risk context data
+     */
+    async getRiskContext(accountId, agentId, currentAmount) {
+        const now = new Date();
+        const tenMinutesAgo = new Date(now - 10 * 60 * 1000);
+        const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000);
+
+        // 1. Velocity: Tokens generated in last 10 minutes
+        const recentTokensCount = await this.db('tokens')
+            .where({ account_id: accountId })
+            .andWhere('created_at', '>', tenMinutesAgo)
+            .count('id as count')
+            .first();
+
+        // 2. Behavior: Average withdrawal amount for this account
+        const avgAmountResult = await this.db('transactions')
+            .where({ account_id: accountId, type: 'WITHDRAWAL', status: 'SUCCESS' })
+            .avg('amount as avg')
+            .first();
+
+        // 3. Abuse: Failed redemption attempts in last 24 hours
+        const failedAttemptsCount = await this.db('redemption_attempts as ra')
+            .join('tokens as t', 'ra.token_id', 't.id')
+            .where({ 't.account_id': accountId })
+            .andWhere('ra.result', '<>', 'SUCCESS')
+            .andWhere('ra.created_at', '>', twentyFourHoursAgo)
+            .count('ra.id as count')
+            .first();
+
+        // 4. Geo/IP: Last successful redemption IP
+        const lastSuccessAttempt = await this.db('redemption_attempts as ra')
+            .join('tokens as t', 'ra.token_id', 't.id')
+            .where({ 't.account_id': accountId, 'ra.result': 'SUCCESS' })
+            .orderBy('ra.created_at', 'desc')
+            .select('ra.metadata')
+            .first();
+
+        let lastIp = null;
+        if (lastSuccessAttempt && lastSuccessAttempt.metadata) {
+            try {
+                const meta = typeof lastSuccessAttempt.metadata === 'string'
+                    ? JSON.parse(lastSuccessAttempt.metadata)
+                    : lastSuccessAttempt.metadata;
+                lastIp = meta.ip;
+            } catch (_e) {
+                // Ignore parse errors
+            }
+        }
+
+        return {
+            velocity10m: parseInt(recentTokensCount?.count || 0),
+            avgAmount: parseFloat(avgAmountResult?.avg || 0),
+            failedAttempts24h: parseInt(failedAttemptsCount?.count || 0),
+            lastIp,
+            currentAmount
+        };
     }
 }
 

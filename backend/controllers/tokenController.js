@@ -67,23 +67,40 @@ class TokenController {
         }
 
         try {
-            // 1. Synchronous Risk Evaluation Stub
-            const riskAssessment = RiskEngine.evaluateRedemption(value.accountId, value.agentId, value.metadata);
-
-            if (riskAssessment.decision === 'REJECT') {
-                logger.warn({ accountId: value.accountId, agentId: value.agentId }, 'Redemption rejected by Risk Engine');
-                return reply.code(403).send({ error: 'Forbidden', message: 'Redemption declined by risk policy' });
-            }
-
-            // If 'CHALLENGE', we might optionally require an MFA step. For now, we log and proceed.
-            // E.g. reply.code(401).send({ error: 'Challenge Required', mfaContext: '...' })
-
-            // 2. Perform ACID Token Redemption (Only if not REJECTED)
             const db = getDb();
             const tokenService = new TokenService(db);
 
+            // 1. Fetch Token Metadata for Risk context (Prefix lookup is fast)
+            const [prefix] = value.token.split('-');
+            const tokenInfo = await db('tokens')
+                .where({ prefix, account_id: value.accountId, status: 'ACTIVE' })
+                .select('amount')
+                .first();
+
+            if (!tokenInfo) {
+                return reply.code(404).send({ error: 'Not Found', message: 'Token not found or already used' });
+            }
+
+            // 2. Fetch Historical Risk Signals
+            const riskContext = await tokenService.getRiskContext(value.accountId, value.agentId, tokenInfo.amount);
+
+            // 3. Evaluate Risk
+            const riskAssessment = RiskEngine.evaluateRedemption(riskContext, value.metadata);
+
+            if (riskAssessment.decision === 'REJECT') {
+                logger.warn({ accountId: value.accountId, agentId: value.agentId, score: riskAssessment.score, reasons: riskAssessment.reasons }, 'Redemption rejected by Risk Engine');
+                return reply.code(403).send({ error: 'Forbidden', message: 'Redemption declined by risk policy', reasons: riskAssessment.reasons });
+            }
+
+            // If 'CHALLENGE', we might optionally require an MFA step. For now, we log and proceed.
+            if (riskAssessment.decision === 'CHALLENGE') {
+                logger.info({ accountId: value.accountId, agentId: value.agentId, reasons: riskAssessment.reasons }, 'Redemption triggered risk challenge');
+            }
+
+            // 4. Perform ACID Token Redemption (Only if not REJECTED)
             const result = await tokenService.redeemWithdrawalToken(value.token, value.agentId, {
                 riskScore: riskAssessment.score,
+                riskReasons: riskAssessment.reasons,
                 ...value.metadata
             });
 

@@ -54,6 +54,49 @@ const { defaultRateLimiter } = require('./middleware/rateLimiter');
  * Register Fastify plugins and middleware
  */
 const registerPlugins = async () => {
+  // Metrics: Prometheus instrumentation (should be early)
+  await fastify.register(require('fastify-metrics'), {
+    endpoint: '/metrics',
+    // In production, you might want to protect this endpoint
+  });
+
+  // API Documentation: Swagger/OpenAPI
+  await fastify.register(require('@fastify/swagger'), {
+    openapi: {
+      info: {
+        title: 'Cardless Cash Withdrawal API',
+        description: 'Secure API for tokenized cash withdrawals and risk evaluation',
+        version: '1.0.0'
+      },
+      servers: [
+        { url: `http://${config.server.host}:${config.server.port}`, description: 'Local Server' }
+      ],
+      tags: [
+        { name: 'tokens', description: 'Token generation and redemption' },
+        { name: 'health', description: 'System health and monitoring' }
+      ],
+      components: {
+        securitySchemes: {
+          apiKey: {
+            type: 'apiKey',
+            name: 'X-API-KEY',
+            in: 'header'
+          }
+        }
+      }
+    }
+  });
+
+  await fastify.register(require('@fastify/swagger-ui'), {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: false
+    },
+    staticCSP: true,
+    transformStaticCSP: (header) => header
+  });
+
   // Request logging hooks (adds correlation ID and logs requests/responses)
   await fastify.register(async (fastify) => {
     fastify.addHook('onRequest', requestLogger);

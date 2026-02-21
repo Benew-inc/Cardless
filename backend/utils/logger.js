@@ -66,6 +66,25 @@ const logger = pino({
     }),
     err: pino.stdSerializers.err,
   },
+  // Redact sensitive information from logs to prevent exposure of PII and secrets
+  redact: {
+    paths: [
+      'token',
+      'accountId',
+      'account_id',
+      'token_hash',
+      'salt',
+      'password',
+      'authorization',
+      'cookie',
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'req.body.token',
+      'req.body.accountId',
+      'res.headers["set-cookie"]'
+    ],
+    remove: true // Instead of masking with [REDACTED], remove completely for security
+  },
   // In production, disable pretty printing for performance
   transport: process.env.NODE_ENV === 'development' ? {
     target: 'pino-pretty',

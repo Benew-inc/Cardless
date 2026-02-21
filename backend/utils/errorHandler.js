@@ -27,8 +27,8 @@
  *    - Returns appropriate HTTP status codes
  */
 
-const { formatErrorResponse, logError, AppError } = require('./errors');
-const { logError: structuredLogError, EVENT_TYPES } = require('./logger');
+const { formatErrorResponse, logError } = require('./errors');
+const { logError: structuredLogError } = require('./logger');
 
 /**
  * Global error handler for Fastify
@@ -85,11 +85,9 @@ const errorHandler = (error, request, reply) => {
  */
 const setupUnhandledRejectionHandler = () => {
   process.on('unhandledRejection', (reason, promise) => {
+    /* eslint-disable no-console */
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    // In production, you might want to:
-    // - Send alert to monitoring service
-    // - Log to external logging service
-    // - Gracefully shutdown the application
+    /* eslint-enable no-console */
   });
 };
 
@@ -99,9 +97,10 @@ const setupUnhandledRejectionHandler = () => {
  */
 const setupUncaughtExceptionHandler = () => {
   process.on('uncaughtException', (error) => {
+    /* eslint-disable no-console */
     console.error('Uncaught Exception:', error);
-    // In production, you should gracefully shutdown
-    // process.exit(1);
+    /* eslint-enable no-console */
+    process.exit(1);
   });
 };
 

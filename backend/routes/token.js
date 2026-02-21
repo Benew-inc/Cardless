@@ -36,6 +36,8 @@ const redemptionUserRateLimiter = createRateLimiter({
     }
 });
 
+const { generateTokenSchema, redeemTokenSchema } = require('../schemas/tokenSchemas');
+
 async function tokenRoutes(fastify, options) {
     // We apply the rate limiters explicitly via `preHandler` hooks.
     const rateLimiterHooks = [
@@ -45,11 +47,14 @@ async function tokenRoutes(fastify, options) {
     ];
 
     fastify.post('/redeem-token', {
+        schema: redeemTokenSchema,
         preHandler: rateLimiterHooks
     }, TokenController.redeemToken);
 
     // Exposing token generation as well for testing integration completeness
-    fastify.post('/', TokenController.generateToken);
+    fastify.post('/', {
+        schema: generateTokenSchema
+    }, TokenController.generateToken);
 }
 
 module.exports = tokenRoutes;

@@ -125,7 +125,7 @@ class RateLimitError extends AppError {
  */
 const formatErrorResponse = (error, request) => {
   const isDevelopment = process.env.NODE_ENV === 'development';
-  
+
   // Base error response
   const response = {
     error: {
@@ -174,7 +174,7 @@ const logError = (error, request = null) => {
       url: request?.url,
       path: request?.routerPath,
     });
-  } catch (loggerError) {
+  } catch (_loggerError) {
     // Fallback if logger not available
     const logData = {
       error: {
@@ -193,7 +193,9 @@ const logError = (error, request = null) => {
       };
     }
 
+    /* eslint-disable no-console */
     console.error('Error occurred:', JSON.stringify(logData, null, 2));
+    /* eslint-enable no-console */
   }
 };
 

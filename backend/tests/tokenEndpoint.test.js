@@ -31,8 +31,19 @@ jest.mock('../utils/logger', () => ({
 }));
 
 // Mock Database Connection Context
-const mockDb = jest.fn();
-mockDb.transaction = jest.fn(); // Prevent undefined error in token test
+const mockDb = jest.fn().mockReturnValue({
+    where: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    first: jest.fn().mockResolvedValue({ amount: 100 }), // Default token amount
+    andWhere: jest.fn().mockReturnThis(),
+    count: jest.fn().mockReturnThis(),
+    avg: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    insert: jest.fn().mockReturnThis(),
+    returning: jest.fn().mockReturnThis()
+});
+mockDb.transaction = jest.fn();
+
 jest.mock('../config/database', () => ({
     getDb: () => mockDb,
     testConnection: jest.fn().mockResolvedValue({ connected: true }),
@@ -60,8 +71,18 @@ describe('POST /api/v1/tokens/redeem-token Endpoint', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // Default risk context
+        const TokenService = require('../services/tokenService');
+        jest.spyOn(TokenService.prototype, 'getRiskContext').mockResolvedValue({
+            velocity10m: 0,
+            avgAmount: 100,
+            failedAttempts24h: 0,
+            lastIp: '127.0.0.1',
+            currentAmount: 100
+        });
+
         // Since we clear mocks, we must re-establish the default successful RiskEngine response
-        jest.spyOn(RiskEngine, 'evaluateRedemption').mockReturnValue({ score: 10, decision: 'APPROVE' });
+        jest.spyOn(RiskEngine, 'evaluateRedemption').mockReturnValue({ score: 0.1, decision: 'APPROVE', reasons: [] });
     });
 
     it('rejects completely invalid schemas (400)', async () => {
@@ -74,7 +95,7 @@ describe('POST /api/v1/tokens/redeem-token Endpoint', () => {
 
         expect(response.statusCode).toBe(400);
         const body = JSON.parse(response.payload);
-        expect(body.error).toBe('Validation Error');
+        expect(body.error).toBe('Bad Request');
     });
 
     it('handles Risk Engine REJECT (403)', async () => {
@@ -167,7 +188,15 @@ describe('Rate Limiter Hooks in Token Endpoint', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        jest.spyOn(RiskEngine, 'evaluateRedemption').mockReturnValue({ score: 10, decision: 'APPROVE' });
+        const TokenService = require('../services/tokenService');
+        jest.spyOn(TokenService.prototype, 'getRiskContext').mockResolvedValue({
+            velocity10m: 0,
+            avgAmount: 100,
+            failedAttempts24h: 0,
+            lastIp: '127.0.0.1',
+            currentAmount: 100
+        });
+        jest.spyOn(RiskEngine, 'evaluateRedemption').mockReturnValue({ score: 0.1, decision: 'APPROVE', reasons: [] });
     });
 
     it('blocks request with 429 when max requests exceeded', async () => {

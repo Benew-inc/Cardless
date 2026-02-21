@@ -33,9 +33,9 @@ const serverStartTime = Date.now();
  * Returns 200 if server is running
  * Used by Kubernetes/Docker health checks
  */
-const healthCheck = async (request, reply) => {
+const healthCheck = async (_request, _reply) => {
   const uptime = Math.floor((Date.now() - serverStartTime) / 1000);
-  
+
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -50,12 +50,12 @@ const healthCheck = async (request, reply) => {
  * Returns 200 only if all dependencies are healthy
  * Used by load balancers to determine if server can accept traffic
  */
-const readinessCheck = async (request, reply) => {
+const readinessCheck = async (_request, reply) => {
   const uptime = Math.floor((Date.now() - serverStartTime) / 1000);
-  
+
   let dbStatus;
   let redisStatus;
-  
+
   try {
     dbStatus = await testDbConnection();
   } catch (error) {
@@ -65,7 +65,7 @@ const readinessCheck = async (request, reply) => {
     });
     dbStatus = { connected: false, error: error.message };
   }
-  
+
   try {
     redisStatus = await testRedisConnection();
   } catch (error) {
@@ -86,7 +86,7 @@ const readinessCheck = async (request, reply) => {
       event_type: EVENT_TYPES.ERROR,
     });
   }
-  
+
   if (!redisStatus.connected) {
     logError(new Error('Redis connection failed'), {
       component: 'health_check',
